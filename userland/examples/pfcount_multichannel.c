@@ -1,5 +1,5 @@
 /*
- * (C) 2003-20 - ntop 
+ * (C) 2003-20 - ntop
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -102,7 +102,7 @@ void print_stats() {
 
   for(i=0; i < num_channels; i++) {
     bytes_received += threads[i].numBytes, pkt_received += threads[i].numPkts;
-  
+
     if(pfring_stats(threads[i].ring, &pfringStat) >= 0) {
       double thpt = ((double)8*threads[i].numBytes)/(delta_abs*1000);
 
@@ -112,7 +112,7 @@ void print_stats() {
 	      i, (unsigned int)threads[i].numPkts, (unsigned int)pfringStat.drop,
 	      (unsigned int)(threads[i].numPkts+pfringStat.drop),
 	      threads[i].numPkts == 0 ? 0 : (double)(pfringStat.drop*100)/(double)(threads[i].numPkts+pfringStat.drop));
-      fprintf(stderr, "%lu pkts - %lu bytes", 
+      fprintf(stderr, "%lu pkts - %lu bytes",
 	      (long unsigned int)threads[i].numPkts,
 	      (long unsigned int)threads[i].numBytes);
       fprintf(stderr, " [%s pps - %.2f Mbit/sec]\n",
@@ -141,10 +141,10 @@ void print_stats() {
   lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
 
   fprintf(stderr, "=========================\n");
-  fprintf(stderr, "Aggregate stats (all channels): [%s pps][%.2f Mbit/sec][%llu pkts rcvd][%llu pkts dropped][%llu pkts total]\n", 
-	  pfring_format_numbers((double)(pkt_received_last*1000)/(double)delta_last, buf1, sizeof(buf1), 1), 
+  fprintf(stderr, "Aggregate stats (all channels): [%s pps][%.2f Mbit/sec][%llu pkts rcvd][%llu pkts dropped][%llu pkts total]\n",
+	  pfring_format_numbers((double)(pkt_received_last*1000)/(double)delta_last, buf1, sizeof(buf1), 1),
           tot_thpt,
-          pkt_received, 
+          pkt_received,
           pkt_dropped,
           pkt_received + pkt_dropped);
   fprintf(stderr, "=========================\n\n");
@@ -217,7 +217,7 @@ void print_packet(const struct pfring_pkthdr *h, const u_char *p, long threadId)
 
   s = (h->ts.tv_sec + thiszone) % 86400;
   nsec = h->extended_hdr.timestamp_ns % 1000;
-    
+
   buflen += snprintf(&bigbuf[buflen], BUFSIZE - buflen,
     "%02d:%02d:%02d.%06u%03u ",
     s / 3600, (s % 3600) / 60, s % 60,
@@ -269,7 +269,7 @@ void* packet_consumer_thread(void* _id) {
    char errbuf[PCAP_ERRBUF_SIZE];
    char pathbuf[256];
    pcap_dumper_t *dumper = NULL;
-   
+
 
 #ifdef HAVE_PTHREAD_SETAFFINITY_NP
    if(numCPU > 1) {
@@ -286,7 +286,7 @@ void* packet_consumer_thread(void* _id) {
       CPU_ZERO(&cpuset);
       CPU_SET(core_id, &cpuset);
       if((s = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) != 0)
-         fprintf(stderr, "Error while binding thread %ld to core %ld: errno=%i\n", 
+         fprintf(stderr, "Error while binding thread %ld to core %ld: errno=%i\n",
                  thread_id, core_id, s);
       else {
          printf("Set thread %lu on core %lu/%u\n", thread_id, core_id, numCPU);
@@ -294,15 +294,15 @@ void* packet_consumer_thread(void* _id) {
    }
 #endif
 
-  sprintf(pathbuf, "/data%ld", thread_id + 1);
-  pcap_t *pt = pcap_open_offline_with_tstamp_precision(pathbuf, PCAP_TSTAMP_PRECISION_NANO, errbuf);
+  sprintf(pathbuf, "/data%ld/%ld.pcap", thread_id + 1, thread_id + 1);
+  pcap_t *pt = pcap_open_dead_with_tstamp_precision(DLT_EN10MB, 16384 /* MTU */, PCAP_TSTAMP_PRECISION_NANO);
   if(pt == NULL) {
-    printf("Unable to open dump file %s\n", pathbuf);
+    printf("Unable to open dump file %s:\n", pathbuf);
     return(-1);
   }
   dumper = pcap_dump_open(pt, pathbuf);
   if(dumper == NULL) {
-    printf("Unable to create dump file %s\n", pathbuf);
+    printf("Unable to create dump file %s:\n", pathbuf);
     return(-1);
   }
 
@@ -312,12 +312,10 @@ void* packet_consumer_thread(void* _id) {
 
       if(pfring_recv(threads[thread_id].ring, &buffer, 0, &hdr, wait_for_packet) > 0) {
         pcap_dump((u_char*)dumper, (struct pcap_pkthdr*)&hdr, buffer);
-	      fprintf(stdout, ".");
-	      fflush(stdout);
         threads[thread_id].numPkts++;
         threads[thread_id].numBytes += hdr.len+24 /* 8 Preamble + 4 CRC + 12 IFG */;
       } else {
-         //if(wait_for_packet == 0) 
+         //if(wait_for_packet == 0)
          //  usleep(1); //sched_yield();
       }
    }
@@ -450,7 +448,7 @@ int main(int argc, char* argv[]) {
   if(use_extended_pkt_header) flags |= PF_RING_LONG_HEADER;
 
   num_channels = pfring_open_multichannel(device, snaplen, flags, ring);
-  
+
   if(num_channels <= 0) {
     fprintf(stderr, "pfring_open_multichannel() returned %d [%s]\n", num_channels, strerror(errno));
     return(-1);
@@ -465,24 +463,24 @@ int main(int argc, char* argv[]) {
     printf("Found %d channels\n", num_channels);
   }
 
-  pfring_version(ring[0], &version);  
+  pfring_version(ring[0], &version);
   printf("Using PF_RING v.%d.%d.%d\n",
 	 (version & 0xFFFF0000) >> 16,
 	 (version & 0x0000FF00) >> 8,
 	 version & 0x000000FF);
-  
+
   for(i=0; i<num_channels; i++) {
     char buf[32];
-   
+
     threads[i].ring = ring[i];
     threads[i].core_affinity = threads_core_affinity[i];
- 
+
     snprintf(buf, sizeof(buf), "pfcount_multichannel-thread %ld", i);
     pfring_set_application_name(threads[i].ring, buf);
 
     if((rc = pfring_set_direction(threads[i].ring, direction)) != 0)
 	fprintf(stderr, "pfring_set_direction returned %d [direction=%d] (you can't capture TX with ZC)\n", rc, direction);
-    
+
     if((rc = pfring_set_socket_mode(threads[i].ring, recv_only_mode)) != 0)
 	fprintf(stderr, "pfring_set_socket_mode returned [rc=%d]\n", rc);
 
@@ -493,7 +491,7 @@ int main(int argc, char* argv[]) {
 
     if(rehash_rss)
        pfring_enable_rss_rehash(threads[i].ring);
-    
+
     if(poll_duration > 0)
        pfring_set_poll_duration(threads[i].ring, poll_duration);
 
