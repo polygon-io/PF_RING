@@ -259,13 +259,17 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, const u
    if(unlikely(verbose))
      print_packet(h, p, threadId);
 
-   threads[threadId].numPkts++, threads[threadId].numBytes += h->len+24 /* 8 Preamble + 4 CRC + 12 IFG */;
+
 }
 
 /* *************************************** */
 
 void* packet_consumer_thread(void* _id) {
    long thread_id = (long)_id;
+   char errbuf[PCAP_ERRBUF_SIZE];
+   char pathbuf[256];
+   pcap_dumper_t *dumper = NULL;
+   
 
 #ifdef HAVE_PTHREAD_SETAFFINITY_NP
    if(numCPU > 1) {
@@ -290,13 +294,28 @@ void* packet_consumer_thread(void* _id) {
    }
 #endif
 
+  sprintf(pathbuf, "/data%ld", thread_id + 1);
+  pcap_t *pt = pcap_open_offline_with_tstamp_precision(pathbuf, PCAP_TSTAMP_PRECISION_NANO, errbuf);
+  if(pt == NULL) {
+    printf("Unable to open dump file %s\n", pathbuf);
+    return(-1);
+  }
+  dumper = pcap_dump_open(pt, pathbuf);
+  if(dumper == NULL) {
+    printf("Unable to create dump file %s\n", pathbuf);
+    return(-1);
+  }
+
    while(!do_shutdown) {
       u_char *buffer = NULL;
       struct pfring_pkthdr hdr;
 
       if(pfring_recv(threads[thread_id].ring, &buffer, 0, &hdr, wait_for_packet) > 0) {
-         dummyProcesssPacket(&hdr, buffer, (u_char*)thread_id);
-
+        pcap_dump((u_char*)dumper, (struct pcap_pkthdr*)&hdr, buffer);
+	      fprintf(stdout, ".");
+	      fflush(stdout);
+        threads[thread_id].numPkts++;
+        threads[thread_id].numBytes += hdr.len+24 /* 8 Preamble + 4 CRC + 12 IFG */;
       } else {
          //if(wait_for_packet == 0) 
          //  usleep(1); //sched_yield();
