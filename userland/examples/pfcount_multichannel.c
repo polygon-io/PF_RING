@@ -320,6 +320,7 @@ void* packet_consumer_thread(void* _id) {
       }
    }
 
+  pcap_dump_close(dumper);
    return(NULL);
 }
 
