@@ -47,7 +47,7 @@
 
 #define DEFAULT_DEVICE     "eth0"
 #define ALARM_SLEEP             1
-#define DEFAULT_SNAPLEN       128
+#define DEFAULT_SNAPLEN     65535
 #define MAX_NUM_THREADS        64
 
 struct thread_stats {
