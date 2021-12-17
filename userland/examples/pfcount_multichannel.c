@@ -47,9 +47,8 @@
 
 #define DEFAULT_DEVICE     "eth0"
 #define ALARM_SLEEP             1
-#define DEFAULT_SNAPLEN      1400 // MTU
+#define DEFAULT_SNAPLEN     65535
 #define MAX_NUM_THREADS        64
-#define BURST_SIZE             32
 
 struct thread_stats {
   u_int64_t __padding_0[8];
@@ -307,27 +306,16 @@ void* packet_consumer_thread(void* _id) {
   }
 
    while(!do_shutdown) {
-      pfring_packet_info packets[BURST_SIZE];
-      int num_packets = 0;
+      u_char *buffer = NULL;
       struct pfring_pkthdr hdr;
 
-      if((num_packets = pfring_recv_burst(threads[thread_id].ring, packets, BURST_SIZE, wait_for_packet)) > 0) {
-        for (int i = 0; i < num_packets; i++) {
-          hdr.len = packets[i].len;
-          hdr.caplen = packets[i].caplen;
-          hdr.extended_hdr.pkt_hash = packets[i].hash;
-          hdr.extended_hdr.rx_direction = 1;
-          hdr.extended_hdr.timestamp_ns = 0;
-          hdr.ts.tv_sec = packets[i].ts.tv_sec;
-          hdr.ts.tv_usec = packets[i].ts.tv_usec;
-
-          threads[thread_id].numPkts++;
-          threads[thread_id].numBytes += hdr.len+24 /* 8 Preamble + 4 CRC + 12 IFG */;
-          pcap_dump((u_char*)dumper, (struct pcap_pkthdr*)&hdr, packets[i].data);
-        }
+      if(pfring_recv(threads[thread_id].ring, &buffer, 0, &hdr, wait_for_packet) > 0) {
+        pcap_dump((u_char*)dumper, (struct pcap_pkthdr*)&hdr, buffer);
+        threads[thread_id].numPkts++;
+        threads[thread_id].numBytes += hdr.len+24 /* 8 Preamble + 4 CRC + 12 IFG */;
       } else {
-        //if(wait_for_packet == 0)
-        //  usleep(1); //sched_yield();
+         //if(wait_for_packet == 0)
+         //  usleep(1); //sched_yield();
       }
    }
 
@@ -345,9 +333,9 @@ void sample_filtering_rules() {
 
     hw_filtering_rule r = { 0 };
 
-    r.rule_id = FILTERING_RULE_AUTO_RULE_ID;
+    r.rule_id = 0;
     r.rule_family_type = generic_flow_tuple_rule;
-    r.rule_family.flow_tuple_rule.action = flow_steer_rule;
+    r.rule_family.flow_tuple_rule.action = flow_pass_rule;
     r.rule_family.flow_tuple_rule.ip_version = 4;
     r.rule_family.flow_tuple_rule.protocol = 6;
     r.rule_family.flow_tuple_rule.src_ip.v4 = src_ip_rule;
