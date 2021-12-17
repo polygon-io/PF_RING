@@ -266,7 +266,6 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, const u
 
 void* packet_consumer_thread(void* _id) {
    long thread_id = (long)_id;
-   char errbuf[PCAP_ERRBUF_SIZE];
    char pathbuf[256];
    pcap_dumper_t *dumper = NULL;
 
@@ -294,16 +293,16 @@ void* packet_consumer_thread(void* _id) {
    }
 #endif
 
-  sprintf(pathbuf, "/data%ld/%ld.pcap", thread_id + 1, thread_id + 1);
+  sprintf(pathbuf, "/data%ld/%ld.pcap", thread_id % 8 + 1, thread_id + 1);
   pcap_t *pt = pcap_open_dead_with_tstamp_precision(DLT_EN10MB, 16384 /* MTU */, PCAP_TSTAMP_PRECISION_NANO);
   if(pt == NULL) {
     printf("Unable to open dump file %s:\n", pathbuf);
-    return(-1);
+    return (void*)(-1);
   }
   dumper = pcap_dump_open(pt, pathbuf);
   if(dumper == NULL) {
     printf("Unable to create dump file %s:\n", pathbuf);
-    return(-1);
+    return (void*)(-1);
   }
 
    while(!do_shutdown) {
