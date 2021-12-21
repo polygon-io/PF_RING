@@ -242,7 +242,7 @@ void *packet_consumer_thread(void *_id) {
   long pos = ftell(dumper);
 
   int fd = fileno(dumper);
-  int fileSize = 64 * 1024 * 1024;
+  int fileSize = 8 * 1024 * 1024;
   if (ftruncate(fd, fileSize) == -1) {
     fclose(dumper);
     printf("Unable to resize dump file %s:\n", pathbuf);
@@ -251,7 +251,7 @@ void *packet_consumer_thread(void *_id) {
   char *map = mmap(0, fileSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (map == MAP_FAILED) {
     fclose(dumper);
-    printf("Unable to mmap dump file %s:\n", pathbuf);
+    printf("Unable to mmap dump file %s: errno=%d\n", pathbuf, errno);
     return (void *)(-1);
   }
 
