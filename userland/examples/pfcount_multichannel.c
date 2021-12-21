@@ -98,23 +98,17 @@ void print_stats() {
 
     if (pfring_stats(threads[i].ring, &pfringStat) >= 0) {
       double thpt = ((double)8 * threads[i].numBytes) / (delta_abs * 1000);
+      u_int64_t totalPkts = threads[i].numPkts + pfringStat.drop;
 
       fprintf(stderr,
               "======Channel=%d======\n"
-              "%u recv / %u dropped]\n"
-              "%u recv / %.1f %% dropped\n",
-              i, (unsigned int)threads[i].numPkts,
-              (unsigned int)pfringStat.drop,
-              (unsigned int)(threads[i].numPkts + pfringStat.drop),
-              threads[i].numPkts == 0
+              "%u / %lu dropped (%.1f%%)\n",
+              i, (unsigned int)pfringStat.drop, totalPkts,
+              totalPkts == 0
                   ? 0
-                  : (double)(pfringStat.drop * 100) /
-                        (double)(threads[i].numPkts + pfringStat.drop));
-      fprintf(stderr, "%lu pkts - %lu bytes",
-              (long unsigned int)threads[i].numPkts,
-              (long unsigned int)threads[i].numBytes);
+                  : (double)(pfringStat.drop * 100) / (double)(totalPkts));
       fprintf(
-          stderr, " [%s pps - %.2f Mbit/sec]\n",
+          stderr, "%s pps / %.2f Mbit/sec\n",
           pfring_format_numbers((double)(threads[i].numPkts * 1000) / delta_abs,
                                 buf1, sizeof(buf1), 1),
           thpt);
@@ -142,14 +136,8 @@ void print_stats() {
   lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
 
   fprintf(stderr, "========Aggregate========\n");
-  fprintf(stderr,
-          "%llu recv / %llu dropped [%s pps][%.2f Mbit/sec]\n\n",
-          pkt_received,
-          pkt_dropped,
-          pfring_format_numbers((double)(pkt_received_last * 1000) /
-                                    (double)delta_last,
-                                buf1, sizeof(buf1), 1),
-          tot_thpt);
+  fprintf(stderr, "%llu / %llu dropped [%.2f Mbit/sec]\n\n", pkt_dropped,
+          pkt_received, tot_thpt);
 }
 
 void sigproc(int sig) {
@@ -200,7 +188,7 @@ void printHelp(void) {
 }
 
 // Writes header, returns fd
-int write_pcap_header(char* path) {
+int write_pcap_header(char *path) {
   int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, (mode_t)0600);
   if (fd == -1) {
     printf("Unable to open dump file %s:\n", path);
@@ -208,14 +196,14 @@ int write_pcap_header(char* path) {
   }
   struct pcap_file_header hdr;
 
-	hdr.magic = 0xa1b23c4d; // PCAP_NS_TIMESTAMP
-	hdr.version_major = 2;
-	hdr.version_minor = 4;
+  hdr.magic = 0xa1b23c4d; // PCAP_NS_TIMESTAMP
+  hdr.version_major = 2;
+  hdr.version_minor = 4;
 
-	hdr.thiszone = timezone;
-	hdr.snaplen = snaplen;
-	hdr.sigfigs = 0;
-	hdr.linktype = DLT_EN10MB;
+  hdr.thiszone = timezone;
+  hdr.snaplen = snaplen;
+  hdr.sigfigs = 0;
+  hdr.linktype = DLT_EN10MB;
 
   write(fd, &hdr, sizeof(struct pcap_file_header));
   return fd;
@@ -247,7 +235,8 @@ void *packet_consumer_thread(void *_id) {
   }
 
   char pathbuf[256];
-  sprintf(pathbuf, "/data%ld/test%ld.pcap", thread_id % NUM_DISKS + 1, thread_id + 1);
+  sprintf(pathbuf, "/data%ld/test%ld.pcap", thread_id % NUM_DISKS + 1,
+          thread_id + 1);
 
   int fd = write_pcap_header(pathbuf);
   size_t pos = sizeof(struct pcap_file_header);
@@ -270,16 +259,16 @@ void *packet_consumer_thread(void *_id) {
 
     if (pfring_recv(threads[thread_id].ring, &buffer, 0, &hdr,
                     wait_for_packet) > 0) {
-      // Spec: https://wiki.wireshark.org/Development/LibpcapFileFormat#record-packet-header
+      // https://wiki.wireshark.org/Development/LibpcapFileFormat#record-packet-header
       // The first few fields of pfring_pkthdr and pcap_pkthdr match
       memcpy(map + pos, &hdr, sizeof(struct pcap_pkthdr));
       pos += sizeof(struct pcap_pkthdr);
       // TODO: Is header.ts is the correct nanosecond format?
-      // or does u_int64_t header.extended_hdr.timestamp_ns have the hardware timestamp we need?
+      // or does u_int64_t header.extended_hdr.timestamp_ns have the hardware
+      // timestamp we need?
       memcpy(map + pos, buffer, hdr.caplen);
       pos += hdr.caplen;
 
-      // pcap_dump((u_char *)dumper, (struct pcap_pkthdr *)&hdr, buffer);
       threads[thread_id].numPkts++;
       threads[thread_id].numBytes +=
           hdr.len + 24; // 8 Preamble + 4 CRC + 12 IFG
