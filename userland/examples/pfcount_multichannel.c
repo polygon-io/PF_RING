@@ -45,7 +45,7 @@
 
 #include "pfutils.c"
 
-#define DEFAULT_DEVICE "eth0"
+#define DEFAULT_DEVICE "mlx:mlx5_1"
 #define ALARM_SLEEP 1
 #define DEFAULT_SNAPLEN 1400
 #define MAX_NUM_THREADS 64
@@ -61,18 +61,13 @@ typedef struct thread_stats {
   volatile u_int64_t do_shutdown;
 } t_thread_stats;
 
-int verbose = 0, num_channels = 1;
+int num_channels = 1;
 
 struct timeval startTime;
 u_int8_t use_extended_pkt_header = 0, wait_for_packet = 1, do_shutdown = 0;
 u_int numCPU;
 
 t_thread_stats *threads;
-
-u_int32_t src_ip_rule = 0;
-u_int8_t src_ip_rule_set = 0;
-
-/* ******************************** */
 
 void print_stats() {
   pfring_stat pfringStat;
@@ -155,8 +150,6 @@ void print_stats() {
   fprintf(stderr, "=========================\n\n");
 }
 
-/* ******************************** */
-
 void sigproc(int sig) {
   static int called = 0;
   int i;
@@ -176,8 +169,6 @@ void sigproc(int sig) {
   }
 }
 
-/* ******************************** */
-
 void my_sigalarm(int sig) {
   if (do_shutdown)
     return;
@@ -185,8 +176,6 @@ void my_sigalarm(int sig) {
   alarm(ALARM_SLEEP);
   signal(SIGALRM, my_sigalarm);
 }
-
-/* *************************************** */
 
 void printHelp(void) {
   printf("pfcount_multichannel\n(C) 2005-21 ntop.org\n\n");
@@ -210,15 +199,10 @@ void printHelp(void) {
          "coreId 6\n"
          "                and so on.\n");
   printf("-r              Rehash RSS packets\n");
-  printf("-v              Verbose\n");
 }
-
-/* *************************************** */
 
 void *packet_consumer_thread(void *_id) {
   long thread_id = (long)_id;
-  char pathbuf[256];
-  pcap_dumper_t *dumper = NULL;
 
   if (numCPU > 1) {
     /* Bind this thread to a specific core */
@@ -242,6 +226,7 @@ void *packet_consumer_thread(void *_id) {
     }
   }
 
+  char pathbuf[256];
   sprintf(pathbuf, "/data%ld/%ld.pcap", thread_id % 8 + 1, thread_id + 1);
   pcap_t *pt = pcap_open_dead_with_tstamp_precision(DLT_EN10MB, 16384 /* MTU */,
                                                     PCAP_TSTAMP_PRECISION_NANO);
@@ -249,7 +234,7 @@ void *packet_consumer_thread(void *_id) {
     printf("Unable to open dump file %s:\n", pathbuf);
     return (void *)(-1);
   }
-  dumper = pcap_dump_open(pt, pathbuf);
+  pcap_dumper_t *dumper = pcap_dump_open(pt, pathbuf);
   if (dumper == NULL) {
     printf("Unable to create dump file %s:\n", pathbuf);
     return (void *)(-1);
@@ -275,8 +260,6 @@ void *packet_consumer_thread(void *_id) {
   return (NULL);
 }
 
-/* *************************************** */
-
 int main(int argc, char *argv[]) {
   char *device = NULL, c, *bind_mask = NULL;
   int snaplen = DEFAULT_SNAPLEN, rc, watermark = 0, rehash_rss = 0;
@@ -293,7 +276,7 @@ int main(int argc, char *argv[]) {
   startTime.tv_sec = 0;
   numCPU = sysconf(_SC_NPROCESSORS_ONLN);
 
-  while ((c = getopt(argc, argv, "hi:I:l:mvae:w:b:rp:P:g:")) != -1) {
+  while ((c = getopt(argc, argv, "hi:l:mae:w:b:rp:P:g:")) != -1) {
     switch (c) {
     case 'h':
       printHelp();
@@ -317,15 +300,8 @@ int main(int argc, char *argv[]) {
     case 'i':
       device = strdup(optarg);
       break;
-    case 'I':
-      src_ip_rule = ntohl(inet_addr(optarg));
-      src_ip_rule_set = 1;
-      break;
     case 'm':
       use_extended_pkt_header = 1;
-      break;
-    case 'v':
-      verbose = 1;
       break;
     case 'w':
       watermark = atoi(optarg);
@@ -348,8 +324,6 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (verbose)
-    watermark = 1;
   if (device == NULL)
     device = DEFAULT_DEVICE;
 
@@ -449,11 +423,8 @@ int main(int argc, char *argv[]) {
   signal(SIGINT, sigproc);
   signal(SIGTERM, sigproc);
   signal(SIGINT, sigproc);
-
-  if (!verbose) {
-    signal(SIGALRM, my_sigalarm);
-    alarm(ALARM_SLEEP);
-  }
+  signal(SIGALRM, my_sigalarm);
+  alarm(ALARM_SLEEP);
 
   for (i = 0; i < num_channels; i++) {
     pthread_join(threads[i].pd_thread, NULL);
