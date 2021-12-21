@@ -48,6 +48,7 @@
 
 #define DEFAULT_DEVICE "mlx:mlx5_1"
 #define ALARM_SLEEP 1
+#define NUM_DISKS 8
 #define DEFAULT_SNAPLEN 1400
 #define MAX_NUM_THREADS 64
 
@@ -140,15 +141,15 @@ void print_stats() {
 
   lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
 
-  fprintf(stderr, "=========================\n");
+  fprintf(stderr, "========Aggregate========\n");
   fprintf(stderr,
-          "Aggregate stats (all channels): [%s pps][%.2f Mbit/sec][%llu pkts "
-          "rcvd][%llu pkts dropped][%llu pkts total]\n",
+          "%llu recv / %llu dropped [%s pps][%.2f Mbit/sec]\n",
+          pkt_received,
+          pkt_dropped,
           pfring_format_numbers((double)(pkt_received_last * 1000) /
                                     (double)delta_last,
                                 buf1, sizeof(buf1), 1),
-          tot_thpt, pkt_received, pkt_dropped, pkt_received + pkt_dropped);
-  fprintf(stderr, "=========================\n\n");
+          tot_thpt);
 }
 
 void sigproc(int sig) {
@@ -224,7 +225,6 @@ void *packet_consumer_thread(void *_id) {
   long thread_id = (long)_id;
 
   // Bind this thread to a specific core
-  /*
   if (numCPU > 1) {
     cpu_set_t cpuset;
     u_long core_id;
@@ -245,10 +245,9 @@ void *packet_consumer_thread(void *_id) {
       printf("Set thread %lu on core %lu/%u\n", thread_id, core_id, numCPU);
     }
   }
-  */
 
   char pathbuf[256];
-  sprintf(pathbuf, "/data%ld/test%ld.pcap", thread_id % 8 + 1, thread_id + 1);
+  sprintf(pathbuf, "/data%ld/test%ld.pcap", thread_id % NUM_DISKS + 1, thread_id + 1);
 
   int fd = write_pcap_header(pathbuf);
   int pos = sizeof(struct pcap_file_header);
@@ -265,8 +264,6 @@ void *packet_consumer_thread(void *_id) {
     return (void *)(-1);
   }
 
-  size_t pcap_pkthdr_len = sizeof(struct pcap_pkthdr);
-
   while (!do_shutdown) {
     u_char *buffer = NULL;
     struct pfring_pkthdr hdr;
@@ -275,9 +272,9 @@ void *packet_consumer_thread(void *_id) {
                     wait_for_packet) > 0) {
       // Spec: https://wiki.wireshark.org/Development/LibpcapFileFormat#record-packet-header
       // The first few fields of pfring_pkthdr and pcap_pkthdr match
-      memcpy(map + pos, &hdr, pcap_pkthdr_len);
-      pos += pcap_pkthdr_len;
-      // TODO: is header.ts is the correct nanosecond format?
+      memcpy(map + pos, &hdr, sizeof(struct pcap_pkthdr));
+      pos += sizeof(struct pcap_pkthdr);
+      // TODO: Is header.ts is the correct nanosecond format?
       // or does u_int64_t header.extended_hdr.timestamp_ns have the hardware timestamp we need?
       memcpy(map + pos, buffer, hdr.caplen);
       pos += hdr.caplen;
@@ -300,6 +297,9 @@ void *packet_consumer_thread(void *_id) {
     close(fd);
     printf("Unable to unmmap dump file %s:\n", pathbuf);
     return (void *)(-1);
+  }
+  if (ftruncate(fd, pos) == -1) {
+    printf("Unable to shrink dump file to save space %s:\n", pathbuf);
   }
   close(fd);
   return (NULL);
