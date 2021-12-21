@@ -20,6 +20,7 @@
  * THE SOFTWARE.
  */
 
+#include <pcap/dlt.h>
 #define _GNU_SOURCE
 #include <arpa/inet.h>
 #include <errno.h>
@@ -61,7 +62,7 @@ typedef struct thread_stats {
   volatile u_int64_t do_shutdown;
 } t_thread_stats;
 
-int num_channels = 1;
+int num_channels = 1, snaplen = DEFAULT_SNAPLEN;
 
 struct timeval startTime;
 u_int8_t use_extended_pkt_header = 1, wait_for_packet = 1, do_shutdown = 0;
@@ -197,6 +198,28 @@ void printHelp(void) {
          "                and so on.\n");
 }
 
+// Writes header, returns fd
+int write_pcap_header(char* path) {
+  int fd = creat(path, (mode_t)0600);
+  if (fd == -1) {
+    printf("Unable to open dump file %s:\n", path);
+    exit(-1);
+  }
+  struct pcap_file_header hdr;
+
+	hdr.magic = 0xa1b23c4d; // PCAP_NS_TIMESTAMP
+	hdr.version_major = 2;
+	hdr.version_minor = 4;
+
+	hdr.thiszone = timezone;
+	hdr.snaplen = snaplen;
+	hdr.sigfigs = 0;
+	hdr.linktype = DLT_EN10MB;
+
+  write(fd, &hdr, sizeof(struct pcap_file_header));
+  return fd;
+}
+
 void *packet_consumer_thread(void *_id) {
   long thread_id = (long)_id;
 
@@ -226,36 +249,23 @@ void *packet_consumer_thread(void *_id) {
 
   char pathbuf[256];
   sprintf(pathbuf, "/data%ld/%ld.pcap", thread_id % 8 + 1, thread_id + 1);
-  pcap_t *pt = pcap_open_dead_with_tstamp_precision(DLT_EN10MB, 16384 /* MTU */,
-                                                    PCAP_TSTAMP_PRECISION_NANO);
-  if (pt == NULL) {
-    printf("Unable to open dump file %s:\n", pathbuf);
-    return (void *)(-1);
-  }
-  FILE *dumper = (FILE *)pcap_dump_open(pt, pathbuf);
-  if (dumper == NULL) {
-    fclose(dumper);
-    printf("Unable to create dump file %s:\n", pathbuf);
-    return (void *)(-1);
-  }
-  fflush(dumper);
-  long pos = ftell(dumper);
 
-  int fd = fileno(dumper);
+  int fd = write_pcap_header(pathbuf);
+  int pos = sizeof(struct pcap_file_header);
   int fileSize = 8 * 1024 * 1024;
   if (ftruncate(fd, fileSize) == -1) {
-    fclose(dumper);
+    close(fd);
     printf("Unable to resize dump file %s:\n", pathbuf);
     return (void *)(-1);
   }
-  char *map = mmap(0, fileSize, PROT_WRITE, MAP_SHARED, fd, 0);
+  void *map = mmap(0, fileSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if (map == MAP_FAILED) {
-    fclose(dumper);
+    close(fd);
     printf("Unable to mmap dump file %s: errno=%d\n", pathbuf, errno);
     return (void *)(-1);
   }
 
-  size_t headerLength = sizeof(struct pcap_pkthdr);
+  size_t pcap_pkthdr_len = sizeof(struct pcap_pkthdr);
 
   while (!do_shutdown) {
     u_char *buffer = NULL;
@@ -263,9 +273,10 @@ void *packet_consumer_thread(void *_id) {
 
     if (pfring_recv(threads[thread_id].ring, &buffer, 0, &hdr,
                     wait_for_packet) > 0) {
+      // Spec: https://wiki.wireshark.org/Development/LibpcapFileFormat#record-packet-header
       // The first few fields of pfring_pkthdr and pcap_pkthdr match
-      memcpy(map + pos, &hdr, headerLength);
-      pos += headerLength;
+      memcpy(map + pos, &hdr, pcap_pkthdr_len);
+      pos += pcap_pkthdr_len;
       // TODO: is header.ts is the correct nanosecond format?
       // or does u_int64_t header.extended_hdr.timestamp_ns have the hardware timestamp we need?
       memcpy(map + pos, buffer, hdr.caplen);
@@ -286,17 +297,17 @@ void *packet_consumer_thread(void *_id) {
   // }
 
   if (munmap(map, fileSize) == -1) {
-    fclose(dumper);
+    close(fd);
     printf("Unable to unmmap dump file %s:\n", pathbuf);
     return (void *)(-1);
   }
-  fclose(dumper);
+  close(fd);
   return (NULL);
 }
 
 int main(int argc, char *argv[]) {
   char *device = NULL, c, *bind_mask = NULL;
-  int snaplen = DEFAULT_SNAPLEN, rc, watermark = 0;
+  int rc, watermark = 0;
   long i;
   u_int16_t cpu_percentage = 0, poll_duration = 0;
   u_int32_t version;
