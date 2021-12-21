@@ -263,15 +263,6 @@ void *packet_consumer_thread(void *_id) {
   //   perror("Could not sync the file to disk");
   // }
 
-  if (munmap(map, fileSize) == -1) {
-    close(fd);
-    printf("Unable to unmmap dump file %s:\n", pathbuf);
-    return (void *)(-1);
-  }
-  if (ftruncate(fd, pos) == -1) {
-    printf("Unable to shrink dump file to save space %s:\n", pathbuf);
-  }
-  close(fd);
   return (NULL);
 }
 
