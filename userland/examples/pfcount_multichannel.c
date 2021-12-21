@@ -103,14 +103,13 @@ void print_stats() {
       fprintf(
           stderr,
           "======Channel=%d======\n"
-          "%u / %lu dropped (%.1f%%) %s pps %.2f Mbit/sec\n",
+          "%u / %lu (%.1f%%) %s pps\n",
           i, (unsigned int)pfringStat.drop, totalPkts,
           totalPkts == 0
               ? 0
               : (double)(pfringStat.drop * 100) / (double)(totalPkts),
           pfring_format_numbers((double)(threads[i].numPkts * 1000) / delta_abs,
-                                buf1, sizeof(buf1), 1),
-          thpt);
+                                buf1, sizeof(buf1), 1));
       pkt_dropped += pfringStat.drop;
 
       if (lastTime.tv_sec > 0) {
@@ -121,9 +120,9 @@ void print_stats() {
         tot_thpt += thpt;
         pps = ((double)diff / (double)(delta_last / 1000));
         fprintf(
-            stderr, "%llu pkts %s pps\n", (long long unsigned int)diff,
+            stderr, "%llu pkts %s pps %.2f Mbit/sec\n", (long long unsigned int)diff,
             pfring_format_numbers(((double)diff / (double)(delta_last / 1000)),
-                                  buf1, sizeof(buf1), 1));
+                                  buf1, sizeof(buf1), 1), thpt);
         pkt_thpt += pps;
       }
 
@@ -134,8 +133,9 @@ void print_stats() {
   lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
 
   fprintf(stderr, "========Aggregate========\n");
-  fprintf(stderr, "%llu / %llu dropped [%.2f Mbit/sec]\n\n", pkt_dropped,
-          pkt_received, tot_thpt);
+  fprintf(stderr, "%llu / %llu (%.1f%%) [%.2f Mbit/sec]\n\n", pkt_dropped,
+          pkt_received, (double)pkt_dropped / (double)(pkt_dropped + pkt_received),
+          tot_thpt);
 }
 
 void sigproc(int sig) {
@@ -259,13 +259,13 @@ void *packet_consumer_thread(void *_id) {
                     wait_for_packet) > 0) {
       // https://wiki.wireshark.org/Development/LibpcapFileFormat#record-packet-header
       // The first few fields of pfring_pkthdr and pcap_pkthdr match
-      // memcpy(map + pos, &hdr, sizeof(struct pcap_pkthdr));
-      // pos += sizeof(struct pcap_pkthdr);
+      memcpy(map + pos, &hdr, sizeof(struct pcap_pkthdr));
+      pos += sizeof(struct pcap_pkthdr);
       // TODO: Is header.ts is the correct nanosecond format?
       // or does u_int64_t header.extended_hdr.timestamp_ns have the hardware
       // timestamp we need?
-      // memcpy(map + pos, buffer, hdr.caplen);
-      // pos += hdr.caplen;
+      memcpy(map + pos, buffer, hdr.caplen);
+      pos += hdr.caplen;
 
       threads[thread_id].numPkts++;
       threads[thread_id].numBytes +=
