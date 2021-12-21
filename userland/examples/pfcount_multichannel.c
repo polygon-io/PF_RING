@@ -100,7 +100,7 @@ void print_stats() {
       double thpt = ((double)8 * threads[i].numBytes) / (delta_abs * 1000);
 
       fprintf(stderr,
-              "======Channel=%d======\n"
+              "\n======Channel=%d======\n"
               "%u recv / %u dropped]\n"
               "%u recv / %.1f %% dropped\n",
               i, (unsigned int)threads[i].numPkts,
@@ -270,14 +270,17 @@ void *packet_consumer_thread(void *_id) {
 
     if (pfring_recv(threads[thread_id].ring, &buffer, 0, &hdr,
                     wait_for_packet) > 0) {
+      printf("1\n");
       // Spec: https://wiki.wireshark.org/Development/LibpcapFileFormat#record-packet-header
       // The first few fields of pfring_pkthdr and pcap_pkthdr match
       memcpy(map + pos, &hdr, sizeof(struct pcap_pkthdr));
       pos += sizeof(struct pcap_pkthdr);
+      printf("2\n");
       // TODO: Is header.ts is the correct nanosecond format?
       // or does u_int64_t header.extended_hdr.timestamp_ns have the hardware timestamp we need?
       memcpy(map + pos, buffer, hdr.caplen);
       pos += hdr.caplen;
+      printf("3\n");
 
       // pcap_dump((u_char *)dumper, (struct pcap_pkthdr *)&hdr, buffer);
       threads[thread_id].numPkts++;
