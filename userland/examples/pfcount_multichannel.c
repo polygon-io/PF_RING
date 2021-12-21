@@ -200,7 +200,7 @@ void printHelp(void) {
 
 // Writes header, returns fd
 int write_pcap_header(char* path) {
-  int fd = creat(path, (mode_t)0600);
+  int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, (mode_t)0600);
   if (fd == -1) {
     printf("Unable to open dump file %s:\n", path);
     exit(-1);
