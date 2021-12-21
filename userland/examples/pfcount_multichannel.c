@@ -248,7 +248,7 @@ void *packet_consumer_thread(void *_id) {
     printf("Unable to resize dump file %s:\n", pathbuf);
     return (void *)(-1);
   }
-  char *map = mmap(0, fileSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  char *map = mmap(0, fileSize, PROT_WRITE, MAP_SHARED, fd, 0);
   if (map == MAP_FAILED) {
     fclose(dumper);
     printf("Unable to mmap dump file %s: errno=%d\n", pathbuf, errno);
