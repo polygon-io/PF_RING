@@ -230,11 +230,30 @@ void *packet_consumer_thread(void *_id) {
     printf("Unable to open dump file %s:\n", pathbuf);
     return (void *)(-1);
   }
-  pcap_dumper_t *dumper = pcap_dump_open(pt, pathbuf);
+  FILE *dumper = (FILE *)pcap_dump_open(pt, pathbuf);
   if (dumper == NULL) {
+    fclose(dumper);
     printf("Unable to create dump file %s:\n", pathbuf);
     return (void *)(-1);
   }
+  fflush(dumper);
+  long pos = ftell(dumper);
+
+  int fd = fileno(dumper);
+  int fileSize = 64 * 1024 * 1024;
+  if (ftruncate(fd, fileSize) == -1) {
+    fclose(dumper);
+    printf("Unable to resize dump file %s:\n", pathbuf);
+    return (void *)(-1);
+  }
+  char *map = mmap(0, fileSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (map == MAP_FAILED) {
+    fclose(dumper);
+    printf("Unable to mmap dump file %s:\n", pathbuf);
+    return (void *)(-1);
+  }
+
+  size_t headerLength = sizeof(struct pcap_pkthdr);
 
   while (!do_shutdown) {
     u_char *buffer = NULL;
@@ -242,17 +261,34 @@ void *packet_consumer_thread(void *_id) {
 
     if (pfring_recv(threads[thread_id].ring, &buffer, 0, &hdr,
                     wait_for_packet) > 0) {
-      pcap_dump((u_char *)dumper, (struct pcap_pkthdr *)&hdr, buffer);
+      // The first few fields of pfring_pkthdr and pcap_pkthdr match
+      memcpy(map + pos, &hdr, headerLength);
+      pos += headerLength;
+      // TODO: is header.ts is the correct nanosecond format?
+      // or does u_int64_t header.extended_hdr.timestamp_ns have the hardware timestamp we need?
+      memcpy(map + pos, buffer, hdr.caplen);
+      pos += hdr.caplen;
+
+      // pcap_dump((u_char *)dumper, (struct pcap_pkthdr *)&hdr, buffer);
       threads[thread_id].numPkts++;
       threads[thread_id].numBytes +=
-          hdr.len + 24 /* 8 Preamble + 4 CRC + 12 IFG */;
+          hdr.len + 24; // 8 Preamble + 4 CRC + 12 IFG
     } else {
       // if(wait_for_packet == 0)
       //   usleep(1); //sched_yield();
     }
   }
 
-  pcap_dump_close(dumper);
+  // if (msync(map, fileSize, MS_ASYNC) == -1) {
+  //   perror("Could not sync the file to disk");
+  // }
+
+  if (munmap(map, fileSize) == -1) {
+    fclose(dumper);
+    printf("Unable to unmmap dump file %s:\n", pathbuf);
+    return (void *)(-1);
+  }
+  fclose(dumper);
   return (NULL);
 }
 
