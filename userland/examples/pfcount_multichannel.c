@@ -200,8 +200,9 @@ void printHelp(void) {
 void *packet_consumer_thread(void *_id) {
   long thread_id = (long)_id;
 
+  // Bind this thread to a specific core
+  /*
   if (numCPU > 1) {
-    /* Bind this thread to a specific core */
     cpu_set_t cpuset;
     u_long core_id;
     int s;
@@ -221,6 +222,7 @@ void *packet_consumer_thread(void *_id) {
       printf("Set thread %lu on core %lu/%u\n", thread_id, core_id, numCPU);
     }
   }
+  */
 
   char pathbuf[256];
   sprintf(pathbuf, "/data%ld/%ld.pcap", thread_id % 8 + 1, thread_id + 1);
