@@ -248,7 +248,7 @@ void *packet_consumer_thread(void *_id) {
   */
 
   char pathbuf[256];
-  sprintf(pathbuf, "/data%ld/%ld.pcap", thread_id % 8 + 1, thread_id + 1);
+  sprintf(pathbuf, "/data%ld/test%ld.pcap", thread_id % 8 + 1, thread_id + 1);
 
   int fd = write_pcap_header(pathbuf);
   int pos = sizeof(struct pcap_file_header);
