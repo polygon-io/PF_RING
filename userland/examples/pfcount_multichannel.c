@@ -250,8 +250,8 @@ void *packet_consumer_thread(void *_id) {
   sprintf(pathbuf, "/data%ld/test%ld.pcap", thread_id % NUM_DISKS + 1, thread_id + 1);
 
   int fd = write_pcap_header(pathbuf);
-  int pos = sizeof(struct pcap_file_header);
-  int fileSize = 8 * 1024 * 1024 * 1024;
+  size_t pos = sizeof(struct pcap_file_header);
+  size_t fileSize = (size_t)8 * 1024 * 1024 * 1024;
   if (ftruncate(fd, fileSize) == -1) {
     close(fd);
     printf("Unable to resize dump file %s:\n", pathbuf);
