@@ -100,13 +100,14 @@ void print_stats() {
       double thpt = ((double)8 * threads[i].numBytes) / (delta_abs * 1000);
       u_int64_t totalPkts = threads[i].numPkts + pfringStat.drop;
 
-      fprintf(stderr,
-              "======Channel=%d======\n"
-              "%u / %lu dropped (%.1f%%) %s pps %.2f Mbit/sec\n",
-              i, (unsigned int)pfringStat.drop, totalPkts,
-              totalPkts == 0
-                  ? 0
-                  : (double)(pfringStat.drop * 100) / (double)(totalPkts), ,
+      fprintf(
+          stderr,
+          "======Channel=%d======\n"
+          "%u / %lu dropped (%.1f%%) %s pps %.2f Mbit/sec\n",
+          i, (unsigned int)pfringStat.drop, totalPkts,
+          totalPkts == 0
+              ? 0
+              : (double)(pfringStat.drop * 100) / (double)(totalPkts),
           pfring_format_numbers((double)(threads[i].numPkts * 1000) / delta_abs,
                                 buf1, sizeof(buf1), 1),
           thpt);
@@ -120,8 +121,7 @@ void print_stats() {
         tot_thpt += thpt;
         pps = ((double)diff / (double)(delta_last / 1000));
         fprintf(
-            stderr, "%llu pkts %s pps\n",
-            (long long unsigned int)diff,
+            stderr, "%llu pkts %s pps\n", (long long unsigned int)diff,
             pfring_format_numbers(((double)diff / (double)(delta_last / 1000)),
                                   buf1, sizeof(buf1), 1));
         pkt_thpt += pps;
