@@ -259,11 +259,13 @@ void *packet_consumer_thread(void *_id) {
                     wait_for_packet) > 0) {
       // https://wiki.wireshark.org/Development/LibpcapFileFormat#record-packet-header
       // The first few fields of pfring_pkthdr and pcap_pkthdr match
+      __builtin_prefetch(map + pos);
       memcpy(map + pos, &hdr, sizeof(struct pcap_pkthdr));
       pos += sizeof(struct pcap_pkthdr);
       // TODO: Is header.ts is the correct nanosecond format?
       // or does u_int64_t header.extended_hdr.timestamp_ns have the hardware
       // timestamp we need?
+      __builtin_prefetch(map + pos);
       memcpy(map + pos, buffer, hdr.caplen);
       pos += hdr.caplen;
 
@@ -293,9 +295,6 @@ void *packet_consumer_thread(void *_id) {
 }
 
 int main(int argc, char *argv[]) {
-  mlockall(MCL_CURRENT);
-  mlockall(MCL_FUTURE);
-
   char *device = NULL, c, *bind_mask = NULL;
   int rc, watermark = 0;
   long i;
