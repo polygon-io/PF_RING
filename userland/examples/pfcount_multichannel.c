@@ -293,6 +293,9 @@ void *packet_consumer_thread(void *_id) {
 }
 
 int main(int argc, char *argv[]) {
+  mlockall(MCL_CURRENT);
+  mlockall(MCL_FUTURE);
+
   char *device = NULL, c, *bind_mask = NULL;
   int rc, watermark = 0;
   long i;
