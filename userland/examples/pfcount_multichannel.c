@@ -64,7 +64,7 @@ typedef struct thread_stats {
 int num_channels = 1;
 
 struct timeval startTime;
-u_int8_t use_extended_pkt_header = 0, wait_for_packet = 1, do_shutdown = 0;
+u_int8_t use_extended_pkt_header = 1, wait_for_packet = 1, do_shutdown = 0;
 u_int numCPU;
 
 t_thread_stats *threads;
@@ -181,15 +181,12 @@ void printHelp(void) {
   printf("pfcount_multichannel\n(C) 2005-21 ntop.org\n\n");
   printf("-h              Print this help\n");
   printf("-i <device>     Device name (No device@channel)\n");
-
-  printf("-e <direction>  0=RX+TX, 1=RX only, 2=TX only\n");
-  printf("-P <0|1>        Enable (1 - default) or disable (0) promisc\n");
   printf("-l <len>        Capture length\n");
-  printf(
-      "-m              Print more metadata with -v (extended packet header)\n");
+  printf("-m              Don't capture extended packet information "
+         "(nanoseconds)\n");
   printf("-w <watermark>  Watermark\n");
   printf("-p <poll wait>  Poll wait (msec)\n");
-  printf("-b <cpu %%>      CPU pergentage priority (0-99)\n");
+  printf("-b <cpu %%>     CPU pergentage priority (0-99)\n");
   printf("-a              Active packet wait\n");
   printf("-g <id:id...>   Specifies the thread affinity mask. Each <id> "
          "represents\n"
@@ -198,7 +195,6 @@ void printHelp(void) {
          "                binds thread <device>@0 on coreId 7, <device>@1 on "
          "coreId 6\n"
          "                and so on.\n");
-  printf("-r              Rehash RSS packets\n");
 }
 
 void *packet_consumer_thread(void *_id) {
@@ -262,21 +258,19 @@ void *packet_consumer_thread(void *_id) {
 
 int main(int argc, char *argv[]) {
   char *device = NULL, c, *bind_mask = NULL;
-  int snaplen = DEFAULT_SNAPLEN, rc, watermark = 0, rehash_rss = 0;
-  packet_direction direction = rx_only_direction;
+  int snaplen = DEFAULT_SNAPLEN, rc, watermark = 0;
   long i;
   u_int16_t cpu_percentage = 0, poll_duration = 0;
   u_int32_t version;
   u_int32_t flags = 0;
   pfring *ring[MAX_NUM_RX_CHANNELS];
   int threads_core_affinity[MAX_NUM_RX_CHANNELS];
-  int promisc = 1;
 
   memset(threads_core_affinity, -1, sizeof(threads_core_affinity));
   startTime.tv_sec = 0;
   numCPU = sysconf(_SC_NPROCESSORS_ONLN);
 
-  while ((c = getopt(argc, argv, "hi:l:mae:w:b:rp:P:g:")) != -1) {
+  while ((c = getopt(argc, argv, "hi:l:ma:w:b:p:g:")) != -1) {
     switch (c) {
     case 'h':
       printHelp();
@@ -285,15 +279,6 @@ int main(int argc, char *argv[]) {
     case 'a':
       wait_for_packet = 0;
       break;
-    case 'e':
-      switch (atoi(optarg)) {
-      case rx_and_tx_direction:
-      case rx_only_direction:
-      case tx_only_direction:
-        direction = atoi(optarg);
-        break;
-      }
-      break;
     case 'l':
       snaplen = atoi(optarg);
       break;
@@ -301,7 +286,7 @@ int main(int argc, char *argv[]) {
       device = strdup(optarg);
       break;
     case 'm':
-      use_extended_pkt_header = 1;
+      use_extended_pkt_header = 0;
       break;
     case 'w':
       watermark = atoi(optarg);
@@ -309,14 +294,8 @@ int main(int argc, char *argv[]) {
     case 'b':
       cpu_percentage = atoi(optarg);
       break;
-    case 'r':
-      rehash_rss = 1;
-      break;
     case 'p':
       poll_duration = atoi(optarg);
-      break;
-    case 'P':
-      promisc = atoi(optarg);
       break;
     case 'g':
       bind_mask = strdup(optarg);
@@ -346,10 +325,8 @@ int main(int argc, char *argv[]) {
 
   printf("Capturing from %s\n", device);
 
-  if (promisc)
-    flags |= PF_RING_PROMISC;
-  flags |= PF_RING_ZC_SYMMETRIC_RSS; /* Note that symmetric RSS is ignored by
-                                        non-ZC drivers */
+  flags |= PF_RING_PROMISC;
+  flags |= PF_RING_ZC_SYMMETRIC_RSS;
   if (use_extended_pkt_header)
     flags |= PF_RING_LONG_HEADER;
 
@@ -385,11 +362,8 @@ int main(int argc, char *argv[]) {
     snprintf(buf, sizeof(buf), "pfcount_multichannel-thread %ld", i);
     pfring_set_application_name(threads[i].ring, buf);
 
-    if ((rc = pfring_set_direction(threads[i].ring, direction)) != 0)
-      fprintf(stderr,
-              "pfring_set_direction returned %d [direction=%d] (you can't "
-              "capture TX with ZC)\n",
-              rc, direction);
+    if ((rc = pfring_set_direction(threads[i].ring, rx_only_direction)) != 0)
+      fprintf(stderr, "pfring_set_direction returned %d", rc);
 
     if ((rc = pfring_set_socket_mode(threads[i].ring, recv_only_mode)) != 0)
       fprintf(stderr, "pfring_set_socket_mode returned [rc=%d]\n", rc);
@@ -400,9 +374,6 @@ int main(int argc, char *argv[]) {
                 "pfring_set_poll_watermark returned [rc=%d][watermark=%d]\n",
                 rc, watermark);
     }
-
-    if (rehash_rss)
-      pfring_enable_rss_rehash(threads[i].ring);
 
     if (poll_duration > 0)
       pfring_set_poll_duration(threads[i].ring, poll_duration);
