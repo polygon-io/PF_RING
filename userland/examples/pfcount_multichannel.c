@@ -250,6 +250,7 @@ void *packet_consumer_thread(void *_id) {
     printf("Unable to mmap dump file %s: errno=%d\n", pathbuf, errno);
     return (void *)(-1);
   }
+  madvise(map, fileSize, MADV_SEQUENTIAL | MADV_WILLNEED);
 
   while (!do_shutdown) {
     u_char *buffer = NULL;
@@ -259,13 +260,13 @@ void *packet_consumer_thread(void *_id) {
                     wait_for_packet) > 0) {
       // https://wiki.wireshark.org/Development/LibpcapFileFormat#record-packet-header
       // The first few fields of pfring_pkthdr and pcap_pkthdr match
-      __builtin_prefetch(map + pos);
+      // __builtin_prefetch(map + pos);
       memcpy(map + pos, &hdr, sizeof(struct pcap_pkthdr));
       pos += sizeof(struct pcap_pkthdr);
       // TODO: Is header.ts is the correct nanosecond format?
       // or does u_int64_t header.extended_hdr.timestamp_ns have the hardware
       // timestamp we need?
-      __builtin_prefetch(map + pos);
+      // __builtin_prefetch(map + pos);
       memcpy(map + pos, buffer, hdr.caplen);
       pos += hdr.caplen;
 
