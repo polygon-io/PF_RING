@@ -187,7 +187,7 @@ void printHelp(void) {
 
 // Writes header, returns fd
 int write_pcap_header(char *path) {
-  int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, (mode_t)0600);
+  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_DIRECT, (mode_t)0600);
   if (fd == -1) {
     printf("Unable to open dump file %s:\n", path);
     exit(-1);
@@ -237,20 +237,20 @@ void *packet_consumer_thread(void *_id) {
           thread_id + 1);
 
   int fd = write_pcap_header(pathbuf);
-  size_t pos = sizeof(struct pcap_file_header);
-  size_t fileSize = (size_t)8 * 1024 * 1024 * 1024;
-  if (ftruncate(fd, fileSize) == -1) {
-    close(fd);
-    printf("Unable to resize dump file %s:\n", pathbuf);
-    return (void *)(-1);
-  }
-  void *map = mmap(0, fileSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  if (map == MAP_FAILED) {
-    close(fd);
-    printf("Unable to mmap dump file %s: errno=%d\n", pathbuf, errno);
-    return (void *)(-1);
-  }
-  madvise(map, fileSize, MADV_SEQUENTIAL | MADV_WILLNEED);
+  // size_t pos = sizeof(struct pcap_file_header);
+  // size_t fileSize = (size_t)8 * 1024 * 1024 * 1024;
+  // if (ftruncate(fd, fileSize) == -1) {
+  //   close(fd);
+  //   printf("Unable to resize dump file %s:\n", pathbuf);
+  //   return (void *)(-1);
+  // }
+  // void *map = mmap(0, fileSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  // if (map == MAP_FAILED) {
+  //   close(fd);
+  //   printf("Unable to mmap dump file %s: errno=%d\n", pathbuf, errno);
+  //   return (void *)(-1);
+  // }
+  // madvise(map, fileSize, MADV_SEQUENTIAL | MADV_WILLNEED);
 
   while (!do_shutdown) {
     u_char *buffer = NULL;
@@ -261,14 +261,16 @@ void *packet_consumer_thread(void *_id) {
       // https://wiki.wireshark.org/Development/LibpcapFileFormat#record-packet-header
       // The first few fields of pfring_pkthdr and pcap_pkthdr match
       // __builtin_prefetch(map + pos);
-      memcpy(map + pos, &hdr, sizeof(struct pcap_pkthdr));
-      pos += sizeof(struct pcap_pkthdr);
+      write(fd, &hdr, sizeof(struct pcap_pkthdr));
+      // memcpy(map + pos, &hdr, sizeof(struct pcap_pkthdr));
+      // pos += sizeof(struct pcap_pkthdr);
       // TODO: Is header.ts is the correct nanosecond format?
       // or does u_int64_t header.extended_hdr.timestamp_ns have the hardware
       // timestamp we need?
       // __builtin_prefetch(map + pos);
-      memcpy(map + pos, buffer, hdr.caplen);
-      pos += hdr.caplen;
+      // memcpy(map + pos, buffer, hdr.caplen);
+      write(fd, buffer, hdr.caplen);
+      // pos += hdr.caplen;
 
       threads[thread_id].numPkts++;
       threads[thread_id].numBytes +=
@@ -283,14 +285,14 @@ void *packet_consumer_thread(void *_id) {
   //   perror("Could not sync the file to disk");
   // }
 
-  if (munmap(map, fileSize) == -1) {
-    close(fd);
-    printf("Unable to unmmap dump file %s:\n", pathbuf);
-    return (void *)(-1);
-  }
-  if (ftruncate(fd, pos) == -1) {
-    printf("Unable to shrink dump file to save space %s:\n", pathbuf);
-  }
+  // if (munmap(map, fileSize) == -1) {
+  //   close(fd);
+  //   printf("Unable to unmmap dump file %s:\n", pathbuf);
+  //   return (void *)(-1);
+  // }
+  // if (ftruncate(fd, pos) == -1) {
+  //   printf("Unable to shrink dump file to save space %s:\n", pathbuf);
+  // }
   close(fd);
   return (NULL);
 }
